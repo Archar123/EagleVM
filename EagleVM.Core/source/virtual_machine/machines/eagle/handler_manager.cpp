@@ -703,7 +703,7 @@ namespace eagle::virt::eg
         for (const ir::x86_operand& entry : operand_sig)
             sig.emplace_back(entry.operand_type, entry.operand_size);
 
-        const std::optional<std::string> handler_id = target_mnemonic->get_handler_id(sig);
+        const std::optional<uint64_t> handler_id = target_mnemonic->get_handler_id(sig);
         return handler_id ? get_instruction_handler(mnemonic, handler_id.value()) : nullptr;
     }
 
@@ -711,11 +711,11 @@ namespace eagle::virt::eg
     {
         const std::shared_ptr<ir::handler::base_handler_gen> target_mnemonic = ir::instruction_handlers[mnemonic];
 
-        const std::optional<std::string> handler_id = target_mnemonic->get_handler_id(handler_sig);
+        const std::optional<uint64_t> handler_id = target_mnemonic->get_handler_id(handler_sig);
         return handler_id ? get_instruction_handler(mnemonic, handler_id.value()) : nullptr;
     }
 
-    asmb::code_label_ptr handler_manager::get_instruction_handler(mnemonic mnemonic, std::string handler_sig)
+    asmb::code_label_ptr handler_manager::get_instruction_handler(mnemonic mnemonic, uint64_t handler_sig)
     {
         VM_ASSERT(mnemonic != m_pop, "pop retreival through get_instruction_handler is blocked. use get_pop");
         VM_ASSERT(mnemonic != m_push, "push retreival through get_instruction_handler is blocked. use get_push");
@@ -738,6 +738,12 @@ namespace eagle::virt::eg
             signature.push_back(to_ir_size(size));
 
         return get_instruction_handler(mnemonic, signature);
+    }
+
+    ir::ir_insts handler_manager::build_instruction_handler(codec::mnemonic mnemonic, uint64_t handler_sig)
+    {
+        const std::shared_ptr<ir::handler::base_handler_gen> target_mnemonic = ir::instruction_handlers[mnemonic];
+        return target_mnemonic->gen_handler(handler_sig);
     }
 
     void handler_manager::call_vm_handler(const asmb::code_container_ptr& container, const asmb::code_label_ptr& label) const

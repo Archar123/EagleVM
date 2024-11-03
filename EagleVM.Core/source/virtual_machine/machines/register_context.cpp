@@ -33,7 +33,7 @@ namespace eagle::virt
     std::vector<codec::reg> scope_register_manager::reserve_multiple(const uint8_t count)
     {
         std::vector<codec::reg> result;
-        for(auto i = 0; i < count; i++)
+        for (auto i = 0; i < count; i++)
             result.push_back(reserve());
 
         return result;
@@ -49,7 +49,7 @@ namespace eagle::virt
 
     void scope_register_manager::release(const std::vector<codec::reg>& regs)
     {
-        for(const auto reg : regs)
+        for (const auto reg : regs)
             release(reg);
     }
 
@@ -66,7 +66,12 @@ namespace eagle::virt
         blocked_stores.clear();
     }
 
-    std::unordered_set<codec::reg> register_context::get_all_availiable()
+    uint16_t register_context::get_available_count() const
+    {
+        return avaliable_stores.size();
+    }
+
+    std::unordered_set<codec::reg> register_context::get_all_available()
     {
         return avaliable_stores;
     }

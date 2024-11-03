@@ -141,6 +141,8 @@ namespace eagle::virt::eg
             call_vm_handler(container, std::get<0>(store_register(gpr, target_reg)));
         }
 
+        container->add(encode(m_nop));
+
         create_vm_return(container);
         return container;
     }
@@ -228,8 +230,18 @@ namespace eagle::virt::eg
         container->bind(label);
 
         container->add({
-            encode(m_lea, ZREG(rsp), ZMEMBD(rsp, -8, TOB(bit_64))),
+            // prepare to pop flags from stack
+            encode(m_sub, ZREG(rsp), ZIMMU(8)),
             encode(m_popfq),
+
+            // set rsp to be vsp
+            encode(m_xchg, ZREG(VSP), ZREG(rsp)),
+
+            // push flags to virtual stack
+            encode(m_pushfq),
+
+            // reset rsp
+            encode(m_xchg, ZREG(VSP), ZREG(rsp))
         });
 
         create_vm_return(container);
@@ -241,9 +253,24 @@ namespace eagle::virt::eg
         auto [container, label] = vm_rflags_store.get_pair();
         container->bind(label);
 
+        auto mask = regs->get_reserved_temp(0);
+        auto flags = regs->get_reserved_temp(1);
         container->add({
-            encode(m_pushfq),
-            encode(m_lea, ZREG(rsp), ZMEMBD(rsp, 8, TOB(bit_64))),
+            encode(m_mov, ZREG(mask), ZMEMBD(VSP, 0, 8)),
+            encode(m_mov, ZREG(flags), ZMEMBD(VSP, 8, 8)),
+
+            // mask off the wanted bits from flags
+            encode(m_and, ZREG(flags), ZREG(mask)),
+
+            // flip the mask, and remove unwanted bits from destination
+            encode(m_not, ZREG(mask)),
+            encode(m_and, ZMEMBD(rsp, -8, 8), ZREG(mask)),
+
+            // combine
+            encode(m_or, ZMEMBD(rsp, -8, 8), ZREG(flags)),
+
+            // pop the mask
+            encode(m_add, ZREG(VSP), ZIMMU(8)),
         });
 
         create_vm_return(container);
@@ -303,8 +330,8 @@ namespace eagle::virt::eg
             ir::ir_insts handler_ir = target_mnemonic->gen_handler(handler_id);
 
             // todo: walk each block and guarantee that discrete_store variables only use vtemps we want
-            ir::block_ptr ir_block = std::make_shared<ir::block_ir>();
-            ir_block->add_command(handler_ir);
+            auto ir_block = std::make_shared<ir::block_virt_ir>();
+            ir_block->push_back(handler_ir);
 
             const std::shared_ptr<machine> machine = machine_inst.lock();
             const asmb::code_container_ptr handler = machine->lift_block(ir_block);

@@ -1,41 +1,37 @@
 #pragma once
 #include "eaglevm-core/codec/zydis_helper.h"
+#include "eaglevm-core/virtual_machine/ir/models/ir_store.h"
 #include "eaglevm-core/virtual_machine/ir/commands/base_command.h"
+#include "eaglevm-core/virtual_machine/ir/dynamic_encoder/encoder.h"
 
 namespace eagle::ir
 {
-    // todo actually add options
-    using variant_op = std::variant<discrete_store_ptr>;
     class cmd_x86_dynamic : public base_command
     {
     public:
-        // TODO: make this a template constructor
-
-        explicit cmd_x86_dynamic(const codec::mnemonic mnemonic, const variant_op& op1, const variant_op& op2)
-            : base_command(command_type::vm_exec_dynamic_x86), mnemonic(mnemonic)
+        template <typename... Ops>
+        explicit cmd_x86_dynamic(const encoder::encoder& encoder)
+            : base_command(command_type::vm_exec_dynamic_x86), encoder(encoder)
         {
-            operands.push_back(op1);
-            operands.push_back(op2);
         }
 
-        explicit cmd_x86_dynamic(const codec::mnemonic mnemonic, const variant_op& op1)
-            : base_command(command_type::vm_exec_dynamic_x86), mnemonic(mnemonic)
-        {
-            operands.push_back(op1);
-        }
+        encoder::encoder& get_encoder();
+        bool is_similar(const std::shared_ptr<base_command>& other) override;
 
-        codec::mnemonic get_mnemonic() const
-        {
-            return mnemonic;
-        }
-
-        std::vector<variant_op> get_operands()
-        {
-            return operands;
-        }
+        std::vector<discrete_store_ptr> get_use_stores() override;
 
     private:
-        codec::mnemonic mnemonic;
-        std::vector<variant_op> operands;
+        encoder::encoder encoder;
     };
+
+    template <typename... Operands>
+    std::shared_ptr<cmd_x86_dynamic> make_dyn(const codec::mnemonic mnemonic, Operands... ops)
+    {
+        encoder::encoder enc{ mnemonic };
+        (enc.add_operand(ops), ...);
+
+        return std::make_shared<cmd_x86_dynamic>(enc);
+    }
+
+    SHARED_DEFINE(cmd_x86_dynamic);
 }

@@ -34,6 +34,8 @@ std::pair<CONTEXT, CONTEXT> run_container::run(const bool bp)
         input_target.Rsp = safe_context.Rsp;
         output_target.Rsp = input_target.Rsp + rsp_diff;
 
+        input_target.EFlags = 0;
+
         if (bp)
         {
             // so i can tell if its intentional in a debugger
@@ -138,14 +140,8 @@ LONG run_container::veh_handler(EXCEPTION_POINTERS* info)
         }
     }
 
-    if (found)
+    if (found || info->ExceptionRecord->ExceptionCode)
         return EXCEPTION_CONTINUE_EXECUTION;
-
-    if (info->ExceptionRecord->ExceptionCode == EXCEPTION_BREAKPOINT)
-    {
-        info->ContextRecord->Rip += 1;
-        return EXCEPTION_CONTINUE_EXECUTION;
-    }
 
     return EXCEPTION_CONTINUE_SEARCH;
 }

@@ -29,7 +29,7 @@ namespace eagle::ir::lifter
         return base_x86_translator::translate_mem_action(op_mem, idx);
     }
 
-    void mov::finalize_translate_to_virtual()
+    void mov::finalize_translate_to_virtual(x86_cpu_flag flags)
     {
         codec::dec::operand first_op = operands[0];
         switch (first_op.type)
@@ -40,14 +40,14 @@ namespace eagle::ir::lifter
                 if(static_cast<ir_size>(first_op.size) == ir_size::bit_32)
                     reg = codec::get_bit_version(first_op.reg.value, codec::gpr_64);
 
-                block->add_command(std::make_shared<cmd_context_store>(reg, static_cast<codec::reg_size>(first_op.size)));
+                block->push_back(std::make_shared<cmd_context_store>(reg, static_cast<codec::reg_size>(first_op.size)));
 
                 break;
             }
             case ZYDIS_OPERAND_TYPE_MEMORY:
             {
                 ir_size target_size = static_cast<ir_size>(first_op.size);
-                block->add_command(std::make_shared<cmd_mem_write>(target_size, target_size));
+                block->push_back(std::make_shared<cmd_mem_write>(target_size, target_size));
 
                 break;
             }
