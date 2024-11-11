@@ -22,7 +22,7 @@ using namespace eagle;
 
 void print_graphviz(const std::vector<ir::block_ptr>& blocks, const ir::block_ptr& entry)
 {
-    std::cout << "digraph ControlFlow {\n  node [shape=box, fontname=\"Courier\"];\n";
+    std::cout << "digraph ControlFlow_after_lift {\n  node [shape=box, fontname=\"Courier\"];\n";
 
     for (const auto& block : blocks)
     {
@@ -69,6 +69,105 @@ void print_graphviz(const std::vector<ir::block_ptr>& blocks, const ir::block_pt
     std::cout << "}\n";
 }
 
+void print_graphviz_before_lift(const std::vector<ir::block_ptr>& blocks, const ir::block_ptr& entry)
+{
+    std::cout << "digraph ControlFlow_before_lift {\n  node [shape=box, fontname=\"Courier\"];\n";
+
+    for (const auto& block : blocks)
+    {
+        const std::string node_id = std::format("0x{:x}", block->block_id);
+        std::string graph_title = (block == entry) ? node_id + " (entry)" : node_id;
+
+        std::ostringstream insts_nodes;
+        for (const auto& inst : *block)
+            insts_nodes << std::format("<TR><TD ALIGN=\"LEFT\">{}</TD></TR>", inst->to_string());
+
+        std::cout << std::format("  \"{}\" [label=<<TABLE BORDER=\"0\">"
+                                 "<TR><TD ALIGN=\"CENTER\"><B>block {}</B></TD></TR>"
+                                 "{}"
+                                 "</TABLE>>];\n",
+                                 node_id, graph_title, insts_nodes.str());
+
+        std::vector<ir::ir_exit_result> branches;
+        if (const auto ptr = block->as_virt())
+        {
+            if (const auto exit = ptr->exit_as_branch())
+                branches = exit->get_branches();
+            else if (const auto vmexit = ptr->exit_as_vmexit())
+                branches = vmexit->get_branches();
+        }
+        else if (auto ptr = block->as_x86())
+        {
+            if (const auto exit = ptr->exit_as_branch())
+                branches = exit->get_branches();
+        }
+
+        for (const auto& branch : branches)
+        {
+            std::string target_id;
+            if (std::holds_alternative<ir::block_ptr>(branch))
+                target_id = std::format("0x{:x}", std::get<ir::block_ptr>(branch)->block_id);
+            else
+                target_id = std::format("0x{:x}", std::get<uint64_t>(branch));
+
+            std::cout << std::format("  \"{}\" -> \"{}\";\n", node_id, target_id);
+        }
+    }
+
+    std::cout << "}\n";
+}
+
+//printf org block graph
+void print_graphviz_org(const std::vector<eagle::dasm::basic_block_ptr>& blocks)
+{
+    std::cout << "digraph ControlFlow_org {\n  node [shape=box, fontname=\"Courier\"];\n";
+
+    for (const auto& block : blocks)
+    {
+        const std::string node_id = std::format("0x{:x}", block->start_rva);
+        std::string graph_title = node_id;
+
+        std::ostringstream insts_nodes;
+        for (auto& inst : block->decoded_insts)
+            insts_nodes << std::format("<TR><TD ALIGN=\"LEFT\">{}</TD></TR>", codec::instruction_to_string(inst));
+
+        std::cout << std::format("  \"{}\" [label=<<TABLE BORDER=\"0\">"
+                                 "<TR><TD ALIGN=\"CENTER\"><B>block {}</B></TD></TR>"
+                                 "{}"
+                                 "</TABLE>>];\n",
+                                 node_id, graph_title, insts_nodes.str());
+
+        //链接分块
+        //判断块末尾是不是跳转
+        std::string target_id;
+        if (block->get_end_reason() == dasm::block_conditional_jump)
+        {
+            int32_t last_index = block->decoded_insts.size() - 1;
+            assert(last_index >= 0);
+
+            target_id = std::format("0x{:x}", block->calc_jump_address(last_index));
+            std::cout << std::format("  \"{}\" -> \"{}\"[color=green];\n", node_id, target_id);
+
+            target_id = std::format("0x{:x}", block->end_rva_inc);
+            std::cout << std::format("  \"{}\" -> \"{}\"[color=red];\n", node_id, target_id);
+        }
+        else if (block->get_end_reason() == dasm::block_jump)
+        {
+            int32_t last_index = block->decoded_insts.size() - 1;
+            assert(last_index >= 0);
+            target_id = std::format("0x{:x}", block->calc_jump_address(last_index));
+            std::cout << std::format("  \"{}\" -> \"{}\"[color=green];\n", node_id, target_id);
+        }
+        else
+        {
+            // 此时这个分块后续要直接结束
+            target_id = std::format("0x{:x}", block->end_rva_inc);
+            std::cout << std::format("  \"{}\" -> \"{}\";\n", node_id, target_id);
+        }
+    }
+
+    std::cout << "}\n";
+}
 
 void print_ir(const std::vector<ir::block_ptr>& blocks, const ir::block_ptr& entry)
 {
@@ -382,6 +481,8 @@ int main(int argc, char* argv[])
         std::printf("[>] dasm found %llu basic blocks\n", dasm->blocks.size());
         std::cout << std::endl;
 
+        print_graphviz_org(dasm->blocks);
+
         std::shared_ptr ir_trans = std::make_shared<ir::ir_translator>(dasm, &seg_live);
         ir::preopt_block_vec preopt = ir_trans->translate();
 
@@ -434,7 +535,7 @@ int main(int argc, char* argv[])
         for (auto& blocks : vm_blocks | std::views::keys)
             for (const auto& block : blocks)
                 block_labels[block] = asmb::code_label::create();
-
+        
         asmb::code_label_ptr entry_point = asmb::code_label::create();
         for (const auto& [vm_id, blocks] : vm_id_map)
         {
@@ -448,6 +549,9 @@ int main(int argc, char* argv[])
 
             machine->add_block_context(block_labels);
 
+            print_graphviz_before_lift(blocks, block_tracker[entry_block]);
+
+            // optimize graph
             for (auto i = 0; i < blocks.size(); i++)
             {
                 auto& translated_block = blocks[i];
@@ -461,6 +565,7 @@ int main(int argc, char* argv[])
             }
 
             print_graphviz(blocks, block_tracker[entry_block]);
+            //print_ir(blocks, block_tracker[entry_block]);
 
             // build handlers
             std::vector<asmb::code_container_ptr> handler_containers = machine->create_handlers();

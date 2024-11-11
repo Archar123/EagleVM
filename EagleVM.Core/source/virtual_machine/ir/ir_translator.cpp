@@ -162,6 +162,19 @@ namespace eagle::ir
                     }
 
                     current_block->copy_from(result_block);
+
+                    //print decoded_inst->ir_cmds
+                    std::string x86_2_ir;
+
+                    std::string org_inst_str = codec::instruction_to_string(decoded_inst);
+                    x86_2_ir = std::format("[x86_to_ir] {} -> \n", org_inst_str);
+
+                    for (auto it = result_block->begin(); it != result_block->end(); ++it)
+                    {
+                        x86_2_ir += std::format("\t\t{} \n", it->get()->to_string());
+                    }
+
+                    std::cout << x86_2_ir << std::endl;
                 }
             }
 
