@@ -59,7 +59,7 @@ namespace eagle::virt::eg
 
         // walk backwards each command to see the last time each discrete_ptr was used
         // this will tell us when we can free the register
-        std::vector<std::vector<ir::discrete_store_ptr>> store_dead(command_count, { });
+        std::vector<std::vector<ir::discrete_store_ptr>> store_dead(command_count, std::vector<ir::discrete_store_ptr>{});
         std::unordered_set<ir::discrete_store_ptr> discovered_stores;
 
         // as a fair warning, this analysis only cares about the store usage in the current block
